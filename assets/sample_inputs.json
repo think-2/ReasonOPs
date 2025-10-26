@@ -1,0 +1,11 @@
+{
+  "objective": {
+    "sense": "max",
+    "coeffs": [5, 3]
+  },
+  "constraints": [
+    { "coeffs": [1, 0], "sense": "<=", "rhs": 40 },
+    { "coeffs": [0, 2], "sense": "<=", "rhs": 100 },
+    { "coeffs": [3, 2], "sense": "<=", "rhs": 120 }
+  ]
+}
