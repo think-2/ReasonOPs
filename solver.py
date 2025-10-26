@@ -1,11 +1,11 @@
-"""Minimal LP solver stub using PuLP if available.
-Provides a solve_lp(data) function that expects a dict with
-- 'objective': { 'sense': 'max'|'min', 'coeffs': [..] }
-- 'constraints': [ { 'coeffs': [..], 'sense': '<='|'='|'>=', 'rhs': number } ]
+"""Minimal LP solvers using PuLP if available.
 
-This is intentionally small; replace with full modeling later.
+Provides two entrypoints:
+- solve_lp(data): generic coefficient-matrix based interface.
+- solve_profit_lp(products, profits, resources, availability, consumption):
+  higher-level profit-maximization helper suitable for MVP UI.
 """
-from typing import Dict, Any
+from typing import Dict, Any, List, Mapping, Optional
 
 try:
     import pulp
@@ -55,3 +55,43 @@ def solve_lp(data: Dict[str, Any]) -> Dict[str, Any]:
     for i, var in enumerate(x):
         result["vars"][var.name] = var.value()
     return result
+
+
+def solve_profit_lp(
+    products: List[str],
+    profits: Mapping[str, float],
+    resources: List[str],
+    availability: Mapping[str, float],
+    consumption: Optional[Mapping[str, Mapping[str, float]]] = None,
+) -> Dict[str, Any]:
+    """Maximize profit sum(profit[p] * x[p]) subject to resource constraints.
+
+    If `consumption` is provided, it should be a dict resource->product->coef
+    indicating units of resource used per one unit of product. If omitted, we
+    default to 1 unit per product for each resource (simple capacity cap).
+    """
+    if not _HAS_PULP:
+        alloc = {p: 0.0 for p in products}
+        return {"status": "stub_no_pulp", "allocations": alloc, "objective": 0.0}
+
+    prob = pulp.LpProblem("ProfitMax", pulp.LpMaximize)
+    x = {p: pulp.LpVariable(p, lowBound=0) for p in products}
+
+    # Objective
+    prob += pulp.lpSum((profits.get(p, 0.0) * x[p]) for p in products)
+
+    # Constraints
+    if consumption:
+        for r in resources:
+            cons_r = consumption.get(r, {})
+            prob += pulp.lpSum((cons_r.get(p, 0.0) * x[p]) for p in products) <= availability.get(r, 0.0)
+    else:
+        # Default: each product consumes 1 unit of each resource
+        for r in resources:
+            prob += pulp.lpSum(x[p] for p in products) <= availability.get(r, 0.0)
+
+    prob.solve(pulp.PULP_CBC_CMD(msg=False))
+    status = pulp.LpStatus[prob.status]
+    allocations = {p: x[p].value() for p in products}
+    objective = float(pulp.value(prob.objective)) if prob.objective is not None else 0.0
+    return {"status": status, "allocations": allocations, "objective": round(objective, 4)}
