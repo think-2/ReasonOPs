@@ -98,15 +98,52 @@ def solve_profit_lp(form_data: Dict[str, Any]) -> Dict[str, Any]:
     status = pulp.LpStatus[m.status] if hasattr(pulp, "LpStatus") else str(m.status)
     objective = None
     try:
-        if m.status == 1:
-            objective = round(pulp.value(m.objective), 2)
+        # safe guard: attempt to extract objective, errors will set it to None
+        pass
     except Exception:
         objective = None
-
+        if m.status == 1:
+            # get a scalar numeric value from the solver; pulp.value handles LpAffineExpression
+            val = pulp.value(m.objective) if hasattr(pulp, "value") else m.objective
+            if val is None:
+                objective = None
+            else:
+                # evaluate to a plain Python numeric (int/float) if possible
+                evaluated = pulp.value(val) if hasattr(pulp, "value") else val
+                if evaluated is None:
+                    objective = None
+                else:
+                    # if it's already a number, use it; otherwise try converting from string
+                    if isinstance(evaluated, (int, float)):
+                        try:
+                            objective = round(float(evaluated), 2)
+                        except Exception:
+                            objective = None
+                    else:
+                        try:
+                            objective = round(float(str(evaluated)), 2)
+                        except Exception:
+                            objective = None
     allocations = {}
     for p in products:
         varname = re.sub(r"\s+", "_", p)
         val = x[p].value()
-        allocations[p] = round(val, 2) if val is not None else 0.0
+        if val is None:
+            allocations[p] = 0.0
+        else:
+            # prefer numeric types, otherwise convert via string to avoid passing unsupported types to float()
+            if isinstance(val, (int, float)):
+                try:
+                    allocations[p] = round(float(val), 2)
+                except Exception:
+                    allocations[p] = 0.0
+            else:
+                try:
+                    allocations[p] = round(float(str(val)), 2)
+                except Exception:
+                    allocations[p] = 0.0
+            # except Exception:
+            #     # fallback if float conversion fails
+            #     allocations[p] = 0.0
 
     return {"status": status, "objective": objective, "allocations": allocations}

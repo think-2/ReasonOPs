@@ -1,3 +1,5 @@
-streamlit
-pulp
+streamlit>=1.38.0
+pulp>=2.9.0
 requests
+plotly
+pandas
